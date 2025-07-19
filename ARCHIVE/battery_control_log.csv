@@ -1,0 +1,12 @@
+timestamp,voltage_a0,voltage_a1,action
+2025-06-15 18:15:11.941,,,'Error: HTTPConnectionPool(host='192.168.1.192', port=80): Max retries exceeded with url: / (Caused by ConnectTimeoutError(<urllib3.connection.HTTPConnection object at 0x771420569400>, 'Connection to 192.168.1.192 timed out. (connect timeout=1)'))'
+2025-06-15 18:15:18.882,1.7690,0.2096,GPIO0 set to LOW
+2025-06-15 18:15:26.301,1.7683,0.2099,GPIO0 set to HIGH
+2025-06-15 18:15:31.201,1.9725,0.2901,GPIO2 set to HIGH
+2025-06-15 18:20:00.592,1.9940,0.2901,GPIO2 set to HIGH
+2025-06-15 18:20:06.674,1.9938,0.2901,GPIO2 set to LOW
+2025-06-15 18:20:23.340,1.9941,0.5589,GPIO2 set to HIGH
+2025-06-15 18:26:52.840,1.9941,0.5565,GPIO2 set to LOW
+2025-06-15 18:27:01.257,1.9940,0.5565,GPIO0 set to LOW
+2025-06-15 18:31:26.348,1.7248,0.6889,GPIO2 set to LOW
+2025-06-15 18:31:29.583,1.7241,0.6894,GPIO0 set to HIGH

@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Solar Power Station Control</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+</head>
+<body>
+    <h1>Solar Power Station Control</h1>
+
+    <!-- Auto Refresh Toggle -->
+    <section>
+        <button id="toggleRefresh" onclick="toggleAutoRefresh()">Enable Auto Refresh</button>
+    </section>
+
+    <section>
+        <h2>Voltage Readings</h2>
+        <div>
+            <p>
+                <strong>Battery Voltage (A0):</strong>
+                {% if voltages.voltage_a0 is not none %}
+                    {{ (voltages.voltage_a0 * 2.0) | round(4) }} V
+                {% else %}
+                    Error: {{ voltages.error }}
+                {% endif %}
+            </p>
+            <p>
+                <strong>A1 Voltage:</strong>
+                {% if voltages.voltage_a1 is not none %}
+                    {{ voltages.voltage_a1 | round(4) }} V
+                {% else %}
+                    Error: {{ voltages.error }}
+                {% endif %}
+            </p>
+        </div>
+    </section>
+
+    <section>
+        <h2>GPIO Controls</h2>
+        <div>
+            <a href="/gpio/gpio0_low"><button>Turn On LED Lights (GPIO0 LOW)</button></a>
+            <a href="/gpio/gpio0_high"><button>Turn Off LED Lights (GPIO0 HIGH)</button></a>
+            <a href="/gpio/gpio2_high"><button>Turn On Battery Charging (GPIO2 HIGH)</button></a>
+            <a href="/gpio/gpio2_low"><button>Turn Off Battery Charging (GPIO2 LOW)</button></a>
+        </div>
+    </section>
+
+    <section>
+        <h2>Auto Control Setpoints</h2>
+        <p>Current Low Setpoint: {{ low_setpoint if low_setpoint is not none else 'Not set' }} V</p>
+        <p>Current High Setpoint: {{ high_setpoint if high_setpoint is not none else 'Not set' }} V</p>
+        <p>Auto Enabled: {{ 'Yes' if auto_enabled else 'No' }}</p>
+        <form id="setpointForm">
+            <label for="low_setpoint">Low Setpoint (V):</label>
+            <input type="number" id="low_setpoint" name="low_setpoint" step="0.01"><br>
+            <label for="high_setpoint">High Setpoint (V):</label>
+            <input type="number" id="high_setpoint" name="high_setpoint" step="0.01"><br>
+            <button type="button" onclick="setSetpoints()">Set Setpoints</button>
+        </form>
+        <button type="button" onclick="disableAuto()">Disable Auto</button>
+    </section>
+
+    <section>
+        <h2>Voltage History</h2>
+        <canvas id="voltageChart" width="800" height="400"></canvas>
+    </section>
+
+    <script>
+        var ctx = document.getElementById('voltageChart').getContext('2d');
+        var chart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                datasets: [{
+                    label: 'Battery Voltage (A0)',
+                    data: [],
+                    borderColor: 'blue',
+                    fill: false,
+                    decimation: {
+                        enabled: true,
+                        algorithm: 'lttb',
+                        threshold: 1000
+                    }
+                }, {
+                    label: 'A1 Voltage',
+                    data: [],
+                    borderColor: 'green',
+                    fill: false,
+                    decimation: {
+                        enabled: true,
+                        algorithm: 'lttb',
+                        threshold: 1000
+                    }
+                }]
+            },
+            options: {
+                animation: false,
+                elements: {
+                    point: {
+                        radius: 0
+                    }
+                },
+                scales: {
+                    x: {
+                        type: 'time',
+                        time: {
+                            tooltipFormat: 'yyyy-MM-dd HH:mm:ss'
+                        },
+                        title: {
+                            display: true,
+                            text: 'Time'
+                        }
+                    },
+                    y: {
+                        title: {
+                            display: true,
+                            text: 'Voltage (V)'
+                        }
+                    }
+                }
+            }
+        });
+
+        function updateGraph() {
+            fetch('/graph_data')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        console.error('Graph error:', data.error);
+                        return;
+                    }
+                    let combinedA0 = data.timestamps.map((t, i) => ({x: t * 1000, y: data.voltage_a0[i]}));
+                    let combinedA1 = data.timestamps.map((t, i) => ({x: t * 1000, y: data.voltage_a1[i]}));
+                    combinedA0.sort((a, b) => a.x - b.x);
+                    combinedA1.sort((a, b) => a.x - b.x);
+                    chart.data.datasets[0].data = combinedA0;
+                    chart.data.datasets[1].data = combinedA1;
+                    chart.update();
+                })
+                .catch(error => console.error('Error fetching graph data:', error));
+        }
+
+        setInterval(updateGraph, 5000);
+        updateGraph();
+
+        function setSetpoints() {
+            var formData = new FormData(document.getElementById('setpointForm'));
+            fetch('/set_setpoints', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    alert(data.message);
+                    location.reload();
+                } else {
+                    alert('Error: ' + data.message);
+                }
+            })
+            .catch(error => console.error('Error:', error));
+        }
+
+        function disableAuto() {
+            fetch('/disable_auto')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        alert(data.message);
+                        location.reload();
+                    } else {
+                        alert('Error: ' + data.message);
+                    }
+                })
+                .catch(error => console.error('Error:', error));
+        }
+
+        // Auto Refresh Logic
+        let isAutoRefreshEnabled = false;
+        let refreshInterval;
+
+        function toggleAutoRefresh() {
+            isAutoRefreshEnabled = !isAutoRefreshEnabled;
+            const button = document.getElementById('toggleRefresh');
+            if (isAutoRefreshEnabled) {
+                button.textContent = 'Disable Auto Refresh';
+                refreshInterval = setInterval(() => {
+                    window.location.reload();
+                }, 10000);
+            } else {
+                button.textContent = 'Enable Auto Refresh';
+                clearInterval(refreshInterval);
+            }
+        }
+    </script>
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'961d7c0cf904f0a0',t:'MTc1Mjk2MjM1Mi4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script>
+</body>
+</html>

@@ -1,0 +1,3 @@
+timestamp,voltage_a0,voltage_a1,action
+2025-07-12 11:58:49.521,,,Setpoints updated: low=3.7, high=4.0
+2025-07-12 11:58:55.051,1.8421,2.0479,Auto: Turned on charging and off LED (below low setpoint)

@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Solar Power Station Control</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+</head>
+<body class="bg-gray-100 font-sans">
+    <div class="container mx-auto p-6">
+        <h1 class="text-3xl font-bold text-center mb-6">Solar Power Station Control</h1>
+        
+        <!-- Voltage Display -->
+        <div class="bg-white p-6 rounded-lg shadow-md mb-6">
+            <h2 class="text-xl font-semibold mb-4">Voltage Readings</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <p class="text-lg">Battery Voltage (A0):</p>
+                    <p id="voltage_a0" class="text-2xl font-mono">
+                        {% if voltages.voltage_a0 is not none %}
+                            {{ (voltages.voltage_a0 * 2.0) | round(4) }} V
+                        {% else %}
+                            Error: {{ voltages.error }}
+                        {% endif %}
+                    </p>
+                </div>
+                <div>
+                    <p class="text-lg">A1 Voltage:</p>
+                    <p id="voltage_a1" class="text-2xl font-mono">
+                        {% if voltages.voltage_a1 is not none %}
+                            {{ voltages.voltage_a1 | round(4) }} V
+                        {% else %}
+                            Error: {{ voltages.error }}
+                        {% endif %}
+                    </p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- GPIO Control Buttons -->
+        <div class="bg-white p-6 rounded-lg shadow-md mb-6">
+            <h2 class="text-xl font-semibold mb-4">GPIO Controls</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <button onclick="controlGpio('gpio0_low')" class="bg-green-500 text-white py-2 px-4 rounded hover:bg-green-600">
+                    Turn On LED Lights (GPIO0 LOW)
+                </button>
+                <button onclick="controlGpio('gpio0_high')" class="bg-red-500 text-white py-2 px-4 rounded hover:bg-red-600">
+                    Turn Off LED Lights (GPIO0 HIGH)
+                </button>
+                <button onclick="controlGpio('gpio2_high')" class="bg-green-500 text-white py-2 px-4 rounded hover:bg-green-600">
+                    Turn On Battery Charging (GPIO2 HIGH)
+                </button>
+                <button onclick="controlGpio('gpio2_low')" class="bg-red-500 text-white py-2 px-4 rounded hover:bg-red-600">
+                    Turn Off Battery Charging (GPIO2 LOW)
+                </button>
+            </div>
+            <p id="gpio_status" class="mt-4 text-lg text-gray-700"></p>
+        </div>
+        
+        <!-- Voltage Graph -->
+        <div class="bg-white p-6 rounded-lg shadow-md">
+            <h2 class="text-xl font-semibold mb-4">Voltage History</h2>
+            <p id="graph_status" class="mb-4 text-lg text-gray-700"></p>
+            <canvas id="voltageChart" style="height: 300px;"></canvas>
+        </div>
+    </div>
+
+    <script>
+        // Update voltages every 5 seconds
+        function updateVoltages() {
+            fetch('/voltages')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.voltage_a0 !== null) {
+                        document.getElementById('voltage_a0').innerText = (data.voltage_a0 * 2.0).toFixed(4) + ' V';
+                    } else {
+                        document.getElementById('voltage_a0').innerText = 'Error: ' + data.error;
+                    }
+                    if (data.voltage_a1 !== null) {
+                        document.getElementById('voltage_a1').innerText = data.voltage_a1.toFixed(4) + ' V';
+                    } else {
+                        document.getElementById('voltage_a1').innerText = 'Error: ' + data.error;
+                    }
+                })
+                .catch(error => {
+                    document.getElementById('voltage_a0').innerText = 'Error: ' + error;
+                    document.getElementById('voltage_a1').innerText = 'Error: ' + error;
+                });
+        }
+        setInterval(updateVoltages, 5000);
+        updateVoltages();
+
+        // Handle GPIO button clicks
+        function controlGpio(action) {
+            fetch('/gpio/' + action)
+                .then(response => response.json())
+                .then(data => {
+                    const statusDiv = document.getElementById('gpio_status');
+                    if (data.status === 'success') {
+                        statusDiv.innerText = data.message;
+                        statusDiv.classList.remove('text-red-600');
+                        statusDiv.classList.add('text-green-600');
+                    } else {
+                        statusDiv.innerText = 'Error: ' + data.message;
+                        statusDiv.classList.remove('text-green-600');
+                        statusDiv.classList.add('text-red-600');
+                    }
+                    updateVoltages();
+                })
+                .catch(error => {
+                    document.getElementById('gpio_status').innerText = 'Error: ' + error;
+                    document.getElementById('gpio_status').classList.add('text-red-600');
+                });
+        }
+
+        // Initialize voltage graph
+        fetch('/graph_data')
+            .then(response => response.json())
+            .then(data => {
+                const statusDiv = document.getElementById('graph_status');
+                if (data.error || !data.timestamps.length) {
+                    statusDiv.innerText = data.error || 'No valid data available';
+                    statusDiv.classList.add('text-red-600');
+                    return;
+                }
+                
+                // Debug: Log timestamps and voltages
+                console.log('Timestamps:', data.timestamps);
+                console.log('A0 Voltages:', data.voltage_a0);
+                console.log('A1 Voltages:', data.voltage_a1);
+                
+                statusDiv.innerText = 'Graph loaded successfully (' + data.timestamps.length + ' points)';
+                statusDiv.classList.add('text-green-600');
+                
+                const ctx = document.getElementById('voltageChart').getContext('2d');
+                new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: data.timestamps,
+                        datasets: [
+                            {
+                                label: 'Battery Voltage (A0)',
+                                data: data.voltage_a0.map(v => v / 2.0), // Plot raw voltage_a0
+                                borderColor: '#4CAF50',
+                                backgroundColor: '#4CAF50',
+                                fill: false,
+                                pointRadius: 1,
+                                tension: 0.1
+                            },
+                            {
+                                label: 'A1 Voltage',
+                                data: data.voltage_a1,
+                                borderColor: '#2196F3',
+                                backgroundColor: '#2196F3',
+                                fill: false,
+                                pointRadius: 1,
+                                tension: 0.1
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: true,
+                        animation: false,
+                        scales: {
+                            x: {
+                                type: 'time',
+                                time: {
+                                    parser: 'yyyy-MM-dd HH:mm:ss.SSS',
+                                    unit: 'second',
+                                    displayFormats: {
+                                        second: 'HH:mm:ss'
+                                    }
+                                },
+                                title: {
+                                    display: true,
+                                    text: 'Time'
+                                },
+                                ticks: {
+                                    autoSkip: true,
+                                    maxTicksLimit: 20
+                                }
+                            },
+                            y: {
+                                min: 0,
+                                max: 3.3,
+                                title: {
+                                    display: true,
+                                    text: 'Voltage (V)'
+                                },
+                                clip: false
+                            }
+                        },
+                        plugins: {
+                            legend: {
+                                display: true
+                            },
+                            tooltip: {
+                                mode: 'index',
+                                intersect: false
+                            }
+                        }
+                    }
+                });
+            })
+            .catch(error => {
+                document.getElementById('graph_status').innerText = 'Error loading graph: ' + error;
+                document.getElementById('graph_status').classList.add('text-red-600');
+            });
+    </script>
+</body>
+</html>
